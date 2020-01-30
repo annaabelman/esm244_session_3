@@ -1,0 +1,181 @@
+---
+title: "ESM244 Session 3 (Make-up Lecture)"
+author: "Anna Abelman"
+date: "1/28/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# 1. Read in data
+library(tidyverse)
+library(janitor)
+library(sf)
+library(tmap)
+```
+
+#### 2. Read in CA eco-regions data
+
+```{r}
+ca_eco <- read_sf(dsn = ".", layer = "ca_eco") %>%
+  select(US_L3NAME) %>% 
+  rename(region = US_L3NAME) %>% 
+  st_simplify(dTolerance = 100) %>% #simplifying the polygon; be careful not to oversimplify 
+  st_transform(4326) #setting the EPSG
+ 
+#rmapshaper::ms_simplify(), geom::gSimplify are other options
+
+# to check by using st_crs(ca_eco) to set EPSG
+
+plot(ca_eco)
+
+```
+
+#### 3. Read in CA COunties polygons
+
+```{r}
+ca_counties <- read_sf(dsn = ".", layer = "california_county_shape_file")
+#check using st_crs; originally says NA, so change to 4326
+st_crs(ca_counties) = 4326
+```
+
+#### 4. Read in CA dams location and data
+```{r}
+ca_dams <- read_sf(dsn = ".", layer = "California_Jurisdictional_Dams")
+#check st_crs; already set to 4326
+```
+
+#### 5. Make a map of dams in CA, overlayed on eco-regions, with outlines of CA counties
+
+```{r}
+
+ggplot(data = ca_counties)+
+  geom_sf(color = "black",
+          size = 0.1)+
+  geom_sf(data = ca_eco,
+          aes(fill = region),
+          alpha = 0.5,
+          color = "NA",
+          show.legend = FALSE)+
+  geom_sf(data = ca_dams,
+          size = 0.5,
+          alpha = 0.5)+
+  theme_minimal()
+
+```
+
+#### 6. Just explore SB county eco-regions
+
+```{r}
+
+sb <- ca_counties %>% 
+  filter(NAME == "Santa Barbara")
+
+#clip eco-region data to only include information within SB county - use st_interection
+
+eco_clip <- st_intersection(ca_eco, sb)
+
+#now let's plot it:
+
+ggplot()+
+  geom_sf(data = ca_counties,
+          fill = "gray90",
+          color = "gray80",
+          size = 0.2)+
+  geom_sf(data = eco_clip,
+          aes(fill = region),
+          color = "white",
+          show.legend = FALSE)+
+  coord_sf(xlim = c(-121,-119), 
+           ylim = c(33.5,35.5))+ # crops to only show a small portion of CA
+  scale_fill_manual(values = c("purple", "gold2", "blue"))
+
+```
+
+#### 7. Create an interactive map with tmap
+
+```{r}
+#use link in server to find different basemaps
+sb_clip_tmap <- tm_basemap("Esri.WorldImagery")+
+  tm_shape(eco_clip)+
+  tm_fill("region", palette = c("orange", "green", "purple"),
+          alpha = 0.5)
+
+tmap_mode("view")
+sb_clip_tmap
+```
+
+#### 8. How to create an `sf` object from latitude/longitude recordings (e.g. in an Excel file)
+
+Make a mock dataset using tibble():
+```{r}
+
+my_example <- tribble(
+  ~id, ~lon, ~lat,
+  "tiger", -119.4, 34.35,
+  "lion", -119.41, 34.39,
+  "bear", -119.43, 34.38
+)
+#need R to recognize as spatial information to be able to plot using tmap
+
+#convert this to `sf` object:
+animals_sf <- st_as_sf(my_example, coords = c("lon", "lat"), crs = 4326)
+
+```
+
+Make a map using tmap
+```{r}
+
+animal_map <- tm_basemap("Stamen.Watercolor")+
+  tm_shape(animals_sf)+
+  tm_dots(labels = "id", col = "skyblue",
+          size = 0.5)
+
+animal_map
+```
+
+#### 9. Chloropleth of dam counts
+
+```{r}
+intersection <- st_intersection(x = ca_dams, y = ca_counties)
+
+dams_per_county <- intersection %>% 
+  group_by(NAME) %>% 
+  tally()
+
+ca_tot <- ca_counties %>%
+  st_join(dams_per_county) %>% 
+  select(NAME.x, n) %>% 
+  rename(name = NAME.x)
+
+ca_tot_zero <- ca_tot %>% 
+  replace_na(list(n = 0))
+
+#one more example with ggplot
+
+ggplot()+
+  geom_sf(data = ca_tot_zero, 
+          aes(fill = n),
+          size = 0.2,
+          color = "white")+
+  scale_fill_continuous(low = "yellow", high = "red")
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
